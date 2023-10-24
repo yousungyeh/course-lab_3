@@ -148,6 +148,9 @@ module fir_tb
         axis_rst_n = 1;
     end
 
+    /**********************************************/
+    /*             define data                    */
+    /**********************************************/
     reg [31:0]  data_length;
     integer Din, golden, input_data, golden_data, m;
     initial begin
@@ -161,21 +164,33 @@ module fir_tb
         end
     end
 
+    /**********************************************/
+    /*           data Xi to fir                   */
+    /**********************************************/
     integer i;
     initial begin
+        wait(axis_rst_n == 1);
         $display("------------Start simulation-----------");
         ss_tvalid = 0;
         $display("----Start the data input(AXI-Stream)----");
         for(i=0;i<(data_length-1);i=i+1) begin
             ss_tlast = 0; ss(Din_list[i]);
+            
         end
+        $display("----check ap_idle = 0 before transmitting last data----");
         config_read_check(12'h00, 32'h00, 32'h0000_000f); // check idle = 0
         ss_tlast = 1; ss(Din_list[(Data_Num-1)]);
+        $display("ss(Din_list[%d])",i);
         $display("------End the data input(AXI-Stream)------");
     end
 
+
+    /**********************************************/
+    /*           check ap_ctrl error              */
+    /**********************************************/
     integer k;
     reg error;
+    reg error_coef;
     reg status_error;
     initial begin
         error = 0; status_error = 0;
@@ -196,7 +211,7 @@ module fir_tb
         $finish;
     end
 
-    // Prevent hang
+    // Prevent hang out
     integer timeout = (1000000);
     initial begin
         while(timeout > 0) begin
@@ -223,13 +238,17 @@ module fir_tb
         coef[10] =  32'd0;
     end
 
-    reg error_coef;
-    initial begin
+
+    initial begin    
+        wait(axis_rst_n == 1);
         error_coef = 0;
         $display("----Start the coefficient input(AXI-lite)----");
+        arvalid = 0;  // arvalid will let state change to raddr state
         config_write(12'h10, data_length);
         for(k=0; k< Tape_Num; k=k+1) begin
+        
             config_write(12'h20+4*k, coef[k]);
+            
         end
         awvalid <= 0; wvalid <= 0;
         // read-back and check
@@ -242,6 +261,7 @@ module fir_tb
         $display(" Start FIR");
         @(posedge axis_clk) config_write(12'h00, 32'h0000_0001);    // ap_start = 1
         $display("----End the coefficient input(AXI-lite)----");
+        awvalid = 0;
     end
 
     task config_write;
@@ -274,6 +294,7 @@ module fir_tb
             end else begin
                 $display("OK: exp = %d, rdata = %d", exp_data, rdata);
             end
+            arvalid <= 0; 
         end
     endtask
 
